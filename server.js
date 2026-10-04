@@ -375,7 +375,7 @@ app.post("/api/prijscheck", async (req, res) => {
     if (finalBouwjaar) {
 
       fields["Year"] =
-        Number(finalBouwjaar);
+        String(finalBouwjaar);
 
     }
 
