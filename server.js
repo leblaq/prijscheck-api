@@ -77,13 +77,13 @@ app.post("/api/prijscheck", async (req, res) => {
 
 
     /* =========================
-       RECAPTCHA SECRET
+       RECAPTCHA CONTROLEREN
     ========================= */
 
-    const secret =
+    const recaptchaSecret =
       process.env.RECAPTCHA_SECRET_KEY;
 
-    if (!secret) {
+    if (!recaptchaSecret) {
 
       console.error(
         "RECAPTCHA_SECRET_KEY ontbreekt"
@@ -93,23 +93,18 @@ app.post("/api/prijscheck", async (req, res) => {
         ok: false,
         error: "Server configuratiefout"
       });
-
     }
 
 
-    /* =========================
-       RECAPTCHA CONTROLEREN
-    ========================= */
-
-    const params =
+    const captchaParams =
       new URLSearchParams();
 
-    params.append(
+    captchaParams.append(
       "secret",
-      secret
+      recaptchaSecret
     );
 
-    params.append(
+    captchaParams.append(
       "response",
       captchaToken
     );
@@ -124,7 +119,8 @@ app.post("/api/prijscheck", async (req, res) => {
             "Content-Type":
               "application/x-www-form-urlencoded"
           },
-          body: params.toString()
+          body:
+            captchaParams.toString()
         }
       );
 
@@ -144,33 +140,160 @@ app.post("/api/prijscheck", async (req, res) => {
         ok: false,
         error: "reCAPTCHA controle mislukt"
       });
+    }
+
+
+    /* =========================
+       AIRTABLE CONFIG
+    ========================= */
+
+    const airtableToken =
+      process.env.AIRTABLE_TOKEN;
+
+    const airtableBaseId =
+      process.env.AIRTABLE_BASE_ID;
+
+    const airtableTableId =
+      process.env.AIRTABLE_TABLE_ID;
+
+
+    if (
+      !airtableToken ||
+      !airtableBaseId ||
+      !airtableTableId
+    ) {
+
+      console.error(
+        "Airtable configuratie ontbreekt"
+      );
+
+      return res.status(500).json({
+        ok: false,
+        error: "Airtable configuratiefout"
+      });
+    }
+
+
+    /* =========================
+       AIRTABLE VELDEN
+    ========================= */
+
+    const fields = {
+
+      "Kenteken":
+        kenteken,
+
+      "Buitenlands":
+        Boolean(buitenlands),
+
+      "Soort schade":
+        soortschade,
+
+      "Prijs ontvangen via":
+        prijs_via
+
+    };
+
+
+    if (telefoon) {
+      fields["Telefoonnummer"] =
+        telefoon;
+    }
+
+
+    if (email) {
+      fields["Email"] =
+        email;
+    }
+
+
+    /*
+      Alleen bij buitenlands kenteken
+      merk/model/bouwjaar meesturen.
+    */
+
+    if (buitenlands) {
+
+      if (merk) {
+        fields["Merk"] =
+          merk;
+      }
+
+      if (model) {
+        fields["Model"] =
+          model;
+      }
+
+      if (bouwjaar) {
+        fields["Bouwjaar"] =
+          Number(bouwjaar);
+      }
 
     }
 
 
     /* =========================
-       GELDIGE AANVRAAG
+       AIRTABLE RECORD MAKEN
+    ========================= */
+
+    const airtableUrl =
+      `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}`;
+
+
+    const airtableResponse =
+      await fetch(
+        airtableUrl,
+        {
+          method: "POST",
+
+          headers: {
+            "Authorization":
+              `Bearer ${airtableToken}`,
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+              fields
+            })
+        }
+      );
+
+
+    const airtableResult =
+      await airtableResponse.json();
+
+
+    if (!airtableResponse.ok) {
+
+      console.error(
+        "Airtable fout:",
+        airtableResult
+      );
+
+      return res.status(500).json({
+        ok: false,
+        error: "Airtable record kon niet worden aangemaakt"
+      });
+    }
+
+
+    /* =========================
+       GELUKT
     ========================= */
 
     console.log(
-      "Geldige aanvraag:",
-      {
-        kenteken,
-        buitenlands,
-        soortschade,
-        prijs_via,
-        telefoon,
-        email,
-        merk,
-        model,
-        bouwjaar
-      }
+      "Airtable record aangemaakt:",
+      airtableResult.id
     );
 
 
     return res.json({
       ok: true,
-      message: "reCAPTCHA geldig"
+      message: "Aanvraag opgeslagen",
+      recordId: airtableResult.id
     });
 
 
