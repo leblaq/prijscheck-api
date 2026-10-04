@@ -146,6 +146,140 @@ app.post("/api/prijscheck", async (req, res) => {
 
 
     /* =========================
+       VOERTUIGGEGEVENS
+    ========================= */
+
+    let finalMerk = "";
+    let finalModel = "";
+    let finalBouwjaar = "";
+
+
+    /*
+      BUITENLANDS:
+      gebruik handmatig ingevulde velden
+    */
+
+    if (buitenlands) {
+
+      finalMerk =
+        (merk || "").trim();
+
+      finalModel =
+        (model || "").trim();
+
+      finalBouwjaar =
+        bouwjaar || "";
+
+    }
+
+
+    /*
+      NEDERLANDS:
+      opnieuw officieel ophalen via RDW
+    */
+
+    else {
+
+      const rdwKenteken =
+        kenteken
+          .replace(/[^a-zA-Z0-9]/g, "")
+          .toUpperCase();
+
+
+      try {
+
+        const rdwUrl =
+          "https://opendata.rdw.nl/resource/m9d7-ebf2.json" +
+          "?$select=merk,handelsbenaming,datum_eerste_toelating" +
+          "&kenteken=" +
+          encodeURIComponent(rdwKenteken);
+
+
+        const rdwResponse =
+          await fetch(rdwUrl);
+
+
+        if (!rdwResponse.ok) {
+
+          throw new Error(
+            `RDW HTTP ${rdwResponse.status}`
+          );
+
+        }
+
+
+        const rdwData =
+          await rdwResponse.json();
+
+
+        if (rdwData.length > 0) {
+
+          const voertuig =
+            rdwData[0];
+
+
+          finalMerk =
+            voertuig.merk || "";
+
+
+          finalModel =
+            voertuig.handelsbenaming || "";
+
+
+          if (
+            voertuig.datum_eerste_toelating
+          ) {
+
+            finalBouwjaar =
+              voertuig
+                .datum_eerste_toelating
+                .toString()
+                .substring(0, 4);
+
+          }
+
+
+          console.log(
+            "RDW voertuig gevonden:",
+            {
+              kenteken: rdwKenteken,
+              merk: finalMerk,
+              model: finalModel,
+              bouwjaar: finalBouwjaar
+            }
+          );
+
+        }
+
+        else {
+
+          console.log(
+            "RDW kenteken niet gevonden:",
+            rdwKenteken
+          );
+
+        }
+
+      }
+
+      catch(error) {
+
+        /*
+          RDW-fout mag de aanvraag
+          niet blokkeren.
+        */
+
+        console.error(
+          "RDW lookup fout:",
+          error
+        );
+
+      }
+
+    }
+
+
+    /* =========================
        AIRTABLE CONFIG
     ========================= */
 
@@ -189,9 +323,7 @@ app.post("/api/prijscheck", async (req, res) => {
         Boolean(buitenlands),
 
       /*
-        Soort schade is in Airtable
-        een MULTIPLE SELECT.
-        Daarom moet dit een array zijn.
+        Airtable Multiple Select
       */
       "Soort schade":
         [soortschade],
@@ -201,6 +333,8 @@ app.post("/api/prijscheck", async (req, res) => {
 
     };
 
+
+    /* CONTACT */
 
     if (telefoon) {
 
@@ -218,33 +352,30 @@ app.post("/api/prijscheck", async (req, res) => {
     }
 
 
-    /*
-      Alleen bij buitenlands kenteken
-      merk/model/bouwjaar meesturen.
-    */
+    /* =========================
+       MERK / MODEL / JAAR
+    ========================= */
 
-    if (buitenlands) {
+    if (finalMerk) {
 
-      if (merk) {
+      fields["Make"] =
+        finalMerk;
 
-        fields["Make"] =
-          merk;
+    }
 
-      }
 
-      if (model) {
+    if (finalModel) {
 
-        fields["Model"] =
-          model;
+      fields["Model"] =
+        finalModel;
 
-      }
+    }
 
-      if (bouwjaar) {
 
-        fields["Year"] =
-          Number(bouwjaar);
+    if (finalBouwjaar) {
 
-      }
+      fields["Year"] =
+        Number(finalBouwjaar);
 
     }
 
@@ -278,10 +409,6 @@ app.post("/api/prijscheck", async (req, res) => {
 
               fields,
 
-              /*
-                Zorgt dat Airtable ontbrekende
-                select-opties mag aanmaken.
-              */
               typecast: true
 
             })
@@ -302,6 +429,7 @@ app.post("/api/prijscheck", async (req, res) => {
 
       return res.status(500).json({
         ok: false,
+
         error:
           airtableResult?.error?.message ||
           "Airtable record kon niet worden aangemaakt"
@@ -320,9 +448,28 @@ app.post("/api/prijscheck", async (req, res) => {
 
 
     return res.json({
+
       ok: true,
-      message: "Aanvraag opgeslagen",
-      recordId: airtableResult.id
+
+      message:
+        "Aanvraag opgeslagen",
+
+      recordId:
+        airtableResult.id,
+
+      voertuig: {
+
+        merk:
+          finalMerk,
+
+        model:
+          finalModel,
+
+        bouwjaar:
+          finalBouwjaar
+
+      }
+
     });
 
 
@@ -335,9 +482,14 @@ app.post("/api/prijscheck", async (req, res) => {
       error
     );
 
+
     return res.status(500).json({
+
       ok: false,
-      error: "Interne serverfout"
+
+      error:
+        "Interne serverfout"
+
     });
 
   }
