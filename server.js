@@ -178,7 +178,6 @@ app.post("/api/prijscheck", async (req, res) => {
 
     /* =========================
        AIRTABLE VELDEN
-       EXACTE VELDNAMEN
     ========================= */
 
     const fields = {
@@ -189,8 +188,13 @@ app.post("/api/prijscheck", async (req, res) => {
       "Buitenlands":
         Boolean(buitenlands),
 
+      /*
+        Soort schade is in Airtable
+        een MULTIPLE SELECT.
+        Daarom moet dit een array zijn.
+      */
       "Soort schade":
-        soortschade,
+        [soortschade],
 
       "Prijsopgave via":
         prijs_via
@@ -216,7 +220,7 @@ app.post("/api/prijscheck", async (req, res) => {
 
     /*
       Alleen bij buitenlands kenteken
-      merk/model/bouwjaar meesturen
+      merk/model/bouwjaar meesturen.
     */
 
     if (buitenlands) {
@@ -271,7 +275,15 @@ app.post("/api/prijscheck", async (req, res) => {
 
           body:
             JSON.stringify({
-              fields
+
+              fields,
+
+              /*
+                Zorgt dat Airtable ontbrekende
+                select-opties mag aanmaken.
+              */
+              typecast: true
+
             })
         }
       );
@@ -290,7 +302,9 @@ app.post("/api/prijscheck", async (req, res) => {
 
       return res.status(500).json({
         ok: false,
-        error: "Airtable record kon niet worden aangemaakt"
+        error:
+          airtableResult?.error?.message ||
+          "Airtable record kon niet worden aangemaakt"
       });
     }
 
