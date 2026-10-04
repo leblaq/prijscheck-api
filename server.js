@@ -115,10 +115,12 @@ app.post("/api/prijscheck", async (req, res) => {
         "https://www.google.com/recaptcha/api/siteverify",
         {
           method: "POST",
+
           headers: {
             "Content-Type":
               "application/x-www-form-urlencoded"
           },
+
           body:
             captchaParams.toString()
         }
@@ -176,11 +178,12 @@ app.post("/api/prijscheck", async (req, res) => {
 
     /* =========================
        AIRTABLE VELDEN
+       EXACTE VELDNAMEN
     ========================= */
 
     const fields = {
 
-      "Kenteken":
+      "License plate":
         kenteken,
 
       "Buitenlands":
@@ -189,44 +192,54 @@ app.post("/api/prijscheck", async (req, res) => {
       "Soort schade":
         soortschade,
 
-      "Prijs ontvangen via":
+      "Prijsopgave via":
         prijs_via
 
     };
 
 
     if (telefoon) {
-      fields["Telefoonnummer"] =
+
+      fields["Phonenumber"] =
         telefoon;
+
     }
 
 
     if (email) {
+
       fields["Email"] =
         email;
+
     }
 
 
     /*
       Alleen bij buitenlands kenteken
-      merk/model/bouwjaar meesturen.
+      merk/model/bouwjaar meesturen
     */
 
     if (buitenlands) {
 
       if (merk) {
-        fields["Merk"] =
+
+        fields["Make"] =
           merk;
+
       }
 
       if (model) {
+
         fields["Model"] =
           model;
+
       }
 
       if (bouwjaar) {
-        fields["Bouwjaar"] =
+
+        fields["Year"] =
           Number(bouwjaar);
+
       }
 
     }
@@ -247,11 +260,13 @@ app.post("/api/prijscheck", async (req, res) => {
           method: "POST",
 
           headers: {
+
             "Authorization":
               `Bearer ${airtableToken}`,
 
             "Content-Type":
               "application/json"
+
           },
 
           body:
@@ -297,7 +312,9 @@ app.post("/api/prijscheck", async (req, res) => {
     });
 
 
-  } catch (error) {
+  }
+
+  catch(error) {
 
     console.error(
       "Prijscheck fout:",
