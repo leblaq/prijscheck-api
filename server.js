@@ -22,6 +22,463 @@ app.get("/", (req, res) => {
 
 
 /* =========================
+   TELEFOONNUMMER NORMALISEREN
+========================= */
+
+function normalizePhoneNumber(phone, country = "") {
+
+  if (!phone) {
+    return null;
+  }
+
+  let cleaned = phone
+    .toString()
+    .trim()
+    .replace(/[^\d+]/g, "");
+
+
+  /*
+    Nummer staat al internationaal
+  */
+
+  if (cleaned.startsWith("+")) {
+    return cleaned;
+  }
+
+
+  /*
+    0031 / 0032 omzetten naar +
+  */
+
+  if (cleaned.startsWith("00")) {
+    return `+${cleaned.substring(2)}`;
+  }
+
+
+  /*
+    NEDERLAND
+    0612345678 -> +31612345678
+  */
+
+  if (
+    country === "NL" &&
+    cleaned.startsWith("0")
+  ) {
+
+    return `+31${cleaned.substring(1)}`;
+  }
+
+
+  /*
+    BELGIE
+    0470123456 -> +32470123456
+  */
+
+  if (
+    country === "BE" &&
+    cleaned.startsWith("0")
+  ) {
+
+    return `+32${cleaned.substring(1)}`;
+  }
+
+
+  return cleaned;
+}
+
+
+/* =========================
+   SMS VERSTUREN VIA BIRD
+========================= */
+
+app.post("/api/send-sms", async (req, res) => {
+
+  try {
+
+    const {
+      recordId,
+      telefoon,
+      country,
+      message
+    } = req.body;
+
+
+    /* =========================
+       BASISCONTROLE
+    ========================= */
+
+    if (!recordId) {
+
+      return res.status(400).json({
+        ok: false,
+        error: "recordId ontbreekt"
+      });
+
+    }
+
+
+    if (!telefoon) {
+
+      return res.status(400).json({
+        ok: false,
+        error: "Telefoonnummer ontbreekt"
+      });
+
+    }
+
+
+    if (!message) {
+
+      return res.status(400).json({
+        ok: false,
+        error: "SMS bericht ontbreekt"
+      });
+
+    }
+
+
+    /* =========================
+       BIRD CONFIG
+    ========================= */
+
+    const birdApiKey =
+      process.env.BIRD_API_KEY;
+
+
+    if (!birdApiKey) {
+
+      console.error(
+        "BIRD_API_KEY ontbreekt"
+      );
+
+      return res.status(500).json({
+        ok: false,
+        error: "Bird configuratiefout"
+      });
+
+    }
+
+
+    /* =========================
+       TELEFOONNUMMER
+    ========================= */
+
+    const normalizedPhone =
+      normalizePhoneNumber(
+        telefoon,
+        country
+      );
+
+
+    if (
+      !normalizedPhone ||
+      !normalizedPhone.startsWith("+")
+    ) {
+
+      return res.status(400).json({
+        ok: false,
+        error: "Ongeldig telefoonnummer"
+      });
+
+    }
+
+
+    /* =========================
+       SMS STATUS -> PROCESSING
+    ========================= */
+
+    const airtableToken =
+      process.env.AIRTABLE_TOKEN;
+
+    const airtableBaseId =
+      process.env.AIRTABLE_BASE_ID;
+
+    const airtableTableId =
+      process.env.AIRTABLE_TABLE_ID;
+
+
+    if (
+      !airtableToken ||
+      !airtableBaseId ||
+      !airtableTableId
+    ) {
+
+      console.error(
+        "Airtable configuratie ontbreekt"
+      );
+
+      return res.status(500).json({
+        ok: false,
+        error: "Airtable configuratiefout"
+      });
+
+    }
+
+
+    const airtableRecordUrl =
+      `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}/${recordId}`;
+
+
+    await fetch(
+      airtableRecordUrl,
+      {
+        method: "PATCH",
+
+        headers: {
+
+          "Authorization":
+            `Bearer ${airtableToken}`,
+
+          "Content-Type":
+            "application/json"
+
+        },
+
+        body:
+          JSON.stringify({
+
+            fields: {
+              "SMS Status":
+                "Processing"
+            },
+
+            typecast:
+              true
+
+          })
+      }
+    );
+
+
+    /* =========================
+       BIRD SMS VERSTUREN
+    ========================= */
+
+    const birdResponse =
+      await fetch(
+        "https://eu1.platform.bird.com/v1/sms/messages",
+        {
+          method: "POST",
+
+          headers: {
+
+            "Authorization":
+              `Bearer ${birdApiKey}`,
+
+            "Content-Type":
+              "application/json",
+
+            /*
+              voorkomt dubbele verzending
+              wanneer exact dezelfde request
+              opnieuw wordt uitgevoerd
+            */
+            "Idempotency-Key":
+              `airtable-${recordId}`
+
+          },
+
+          body:
+            JSON.stringify({
+
+              to:
+                normalizedPhone,
+
+              /*
+                Later bepalen we definitieve sender.
+                Voorlopig deze testwaarde.
+              */
+              from:
+                "Prijscheck",
+
+              text:
+                message,
+
+              category:
+                "transactional",
+
+              metadata: {
+                airtable_record_id:
+                  recordId
+              },
+
+              options: {
+                smart_encoding:
+                  true
+              }
+
+            })
+        }
+      );
+
+
+    const birdResult =
+      await birdResponse.json();
+
+
+    /* =========================
+       BIRD FOUT
+    ========================= */
+
+    if (!birdResponse.ok) {
+
+      console.error(
+        "Bird SMS fout:",
+        birdResult
+      );
+
+
+      await fetch(
+        airtableRecordUrl,
+        {
+          method: "PATCH",
+
+          headers: {
+
+            "Authorization":
+              `Bearer ${airtableToken}`,
+
+            "Content-Type":
+              "application/json"
+
+          },
+
+          body:
+            JSON.stringify({
+
+              fields: {
+                "SMS Status":
+                  "Failed"
+              },
+
+              typecast:
+                true
+
+            })
+        }
+      );
+
+
+      return res
+        .status(birdResponse.status)
+        .json({
+
+          ok: false,
+
+          error:
+            birdResult?.message ||
+            "SMS kon niet worden verstuurd",
+
+          bird:
+            birdResult
+
+        });
+
+    }
+
+
+    /* =========================
+       SMS GEACCEPTEERD
+    ========================= */
+
+    const smsMessageId =
+      birdResult.id || "";
+
+
+    await fetch(
+      airtableRecordUrl,
+      {
+        method: "PATCH",
+
+        headers: {
+
+          "Authorization":
+            `Bearer ${airtableToken}`,
+
+          "Content-Type":
+            "application/json"
+
+        },
+
+        body:
+          JSON.stringify({
+
+            fields: {
+
+              "SMS Status":
+                "Sent",
+
+              "SMS Message ID":
+                smsMessageId,
+
+              "SMS Sent At":
+                new Date().toISOString()
+
+            },
+
+            typecast:
+              true
+
+          })
+      }
+    );
+
+
+    console.log(
+      "SMS geaccepteerd door Bird:",
+      {
+        recordId,
+        telefoon:
+          normalizedPhone,
+        messageId:
+          smsMessageId,
+        status:
+          birdResult.status
+      }
+    );
+
+
+    return res.json({
+
+      ok: true,
+
+      status:
+        birdResult.status,
+
+      messageId:
+        smsMessageId,
+
+      telefoon:
+        normalizedPhone
+
+    });
+
+
+  }
+
+  catch(error) {
+
+    console.error(
+      "SMS fout:",
+      error
+    );
+
+
+    return res.status(500).json({
+
+      ok: false,
+
+      error:
+        "Interne serverfout"
+
+    });
+
+  }
+
+});
+
+
+/* =========================
    PRIJS CHECK
 ========================= */
 
@@ -154,11 +611,6 @@ app.post("/api/prijscheck", async (req, res) => {
     let finalBouwjaar = "";
 
 
-    /*
-      BUITENLANDS:
-      gebruik handmatig ingevulde velden
-    */
-
     if (buitenlands) {
 
       finalMerk =
@@ -171,12 +623,6 @@ app.post("/api/prijscheck", async (req, res) => {
         bouwjaar || "";
 
     }
-
-
-    /*
-      NEDERLANDS:
-      opnieuw officieel ophalen via RDW
-    */
 
     else {
 
@@ -264,11 +710,6 @@ app.post("/api/prijscheck", async (req, res) => {
 
       catch(error) {
 
-        /*
-          RDW-fout mag de aanvraag
-          niet blokkeren.
-        */
-
         console.error(
           "RDW lookup fout:",
           error
@@ -322,9 +763,6 @@ app.post("/api/prijscheck", async (req, res) => {
       "Buitenlands":
         Boolean(buitenlands),
 
-      /*
-        Airtable Multiple Select
-      */
       "Soort schade":
         [soortschade],
 
@@ -333,8 +771,6 @@ app.post("/api/prijscheck", async (req, res) => {
 
     };
 
-
-    /* CONTACT */
 
     if (telefoon) {
 
@@ -351,10 +787,6 @@ app.post("/api/prijscheck", async (req, res) => {
 
     }
 
-
-    /* =========================
-       MERK / MODEL / JAAR
-    ========================= */
 
     if (finalMerk) {
 
@@ -436,10 +868,6 @@ app.post("/api/prijscheck", async (req, res) => {
       });
     }
 
-
-    /* =========================
-       GELUKT
-    ========================= */
 
     console.log(
       "Airtable record aangemaakt:",
