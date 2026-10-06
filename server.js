@@ -37,48 +37,28 @@ function normalizePhoneNumber(phone, country = "") {
     .replace(/[^\d+]/g, "");
 
 
-  /*
-    Nummer staat al internationaal
-  */
-
   if (cleaned.startsWith("+")) {
     return cleaned;
   }
 
-
-  /*
-    0031 / 0032 omzetten naar +
-  */
 
   if (cleaned.startsWith("00")) {
     return `+${cleaned.substring(2)}`;
   }
 
 
-  /*
-    NEDERLAND
-    0612345678 -> +31612345678
-  */
-
   if (
     country === "NL" &&
     cleaned.startsWith("0")
   ) {
-
     return `+31${cleaned.substring(1)}`;
   }
 
-
-  /*
-    BELGIE
-    0470123456 -> +32470123456
-  */
 
   if (
     country === "BE" &&
     cleaned.startsWith("0")
   ) {
-
     return `+32${cleaned.substring(1)}`;
   }
 
@@ -184,7 +164,7 @@ app.post("/api/send-sms", async (req, res) => {
 
 
     /* =========================
-       SMS STATUS -> PROCESSING
+       AIRTABLE CONFIG
     ========================= */
 
     const airtableToken =
@@ -219,6 +199,10 @@ app.post("/api/send-sms", async (req, res) => {
       `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}/${recordId}`;
 
 
+    /* =========================
+       SMS STATUS -> PROCESSING
+    ========================= */
+
     await fetch(
       airtableRecordUrl,
       {
@@ -251,6 +235,27 @@ app.post("/api/send-sms", async (req, res) => {
 
 
     /* =========================
+       BIRD SENDER
+    ========================= */
+
+    const smsSender =
+      "+3197058019610";
+
+
+    console.log(
+      "Bird SMS request:",
+      {
+        from:
+          smsSender,
+        to:
+          normalizedPhone,
+        recordId:
+          recordId
+      }
+    );
+
+
+    /* =========================
        BIRD SMS VERSTUREN
     ========================= */
 
@@ -268,11 +273,6 @@ app.post("/api/send-sms", async (req, res) => {
             "Content-Type":
               "application/json",
 
-            /*
-              voorkomt dubbele verzending
-              wanneer exact dezelfde request
-              opnieuw wordt uitgevoerd
-            */
             "Idempotency-Key":
               `airtable-${recordId}`
 
@@ -284,12 +284,8 @@ app.post("/api/send-sms", async (req, res) => {
               to:
                 normalizedPhone,
 
-              /*
-                Later bepalen we definitieve sender.
-                Voorlopig deze testwaarde.
-              */
               from:
-                "+3197058019610",
+                smsSender,
 
               text:
                 message,
@@ -312,8 +308,23 @@ app.post("/api/send-sms", async (req, res) => {
       );
 
 
-    const birdResult =
-      await birdResponse.json();
+    let birdResult = {};
+
+    try {
+
+      birdResult =
+        await birdResponse.json();
+
+    }
+
+    catch(error) {
+
+      birdResult = {
+        error:
+          "Bird response was geen geldige JSON"
+      };
+
+    }
 
 
     /* =========================
@@ -366,6 +377,7 @@ app.post("/api/send-sms", async (req, res) => {
           ok: false,
 
           error:
+            birdResult?.error?.message ||
             birdResult?.message ||
             "SMS kon niet worden verstuurd",
 
@@ -427,9 +439,12 @@ app.post("/api/send-sms", async (req, res) => {
     console.log(
       "SMS geaccepteerd door Bird:",
       {
-        recordId,
+        recordId:
+          recordId,
         telefoon:
           normalizedPhone,
+        from:
+          smsSender,
         messageId:
           smsMessageId,
         status:
@@ -449,7 +464,10 @@ app.post("/api/send-sms", async (req, res) => {
         smsMessageId,
 
       telefoon:
-        normalizedPhone
+        normalizedPhone,
+
+      from:
+        smsSender
 
     });
 
@@ -624,6 +642,7 @@ app.post("/api/prijscheck", async (req, res) => {
 
     }
 
+
     else {
 
       const rdwKenteken =
@@ -688,10 +707,14 @@ app.post("/api/prijscheck", async (req, res) => {
           console.log(
             "RDW voertuig gevonden:",
             {
-              kenteken: rdwKenteken,
-              merk: finalMerk,
-              model: finalModel,
-              bouwjaar: finalBouwjaar
+              kenteken:
+                rdwKenteken,
+              merk:
+                finalMerk,
+              model:
+                finalModel,
+              bouwjaar:
+                finalBouwjaar
             }
           );
 
@@ -841,7 +864,8 @@ app.post("/api/prijscheck", async (req, res) => {
 
               fields,
 
-              typecast: true
+              typecast:
+                true
 
             })
         }
@@ -860,14 +884,20 @@ app.post("/api/prijscheck", async (req, res) => {
       );
 
       return res.status(500).json({
+
         ok: false,
 
         error:
           airtableResult?.error?.message ||
           "Airtable record kon niet worden aangemaakt"
+
       });
     }
 
+
+    /* =========================
+       GELUKT
+    ========================= */
 
     console.log(
       "Airtable record aangemaakt:",
