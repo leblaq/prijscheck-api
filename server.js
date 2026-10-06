@@ -289,7 +289,7 @@ app.post("/api/send-sms", async (req, res) => {
                 Voorlopig deze testwaarde.
               */
               from:
-                "Prijscheck",
+                "+3197058019610",
 
               text:
                 message,
