@@ -239,7 +239,7 @@ app.post("/api/send-sms", async (req, res) => {
     ========================= */
 
     const smsSender =
-      "+3197058019610";
+      "Cardome";
 
 
     console.log(
