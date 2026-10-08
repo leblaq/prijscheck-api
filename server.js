@@ -238,10 +238,7 @@ app.post("/api/send-sms", async (req, res) => {
        BIRD SENDER
     ========================= */
 
-    const smsSender =
-  country === "BE"
-    ? "+3197058019610"
-    : "Cardome";
+    const smsSender = "Cardome";
 
 
     console.log(
