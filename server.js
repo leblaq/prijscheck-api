@@ -76,11 +76,12 @@ app.post("/api/send-sms", async (req, res) => {
   try {
 
     const {
-      recordId,
-      telefoon,
-      country,
-      message
-    } = req.body;
+  recordId,
+  telefoon,
+  country,
+  message,
+  messageType
+} = req.body;
 
 
     /* =========================
@@ -273,7 +274,7 @@ app.post("/api/send-sms", async (req, res) => {
               "application/json",
 
             "Idempotency-Key":
-              `airtable-${recordId}`
+  `airtable-${recordId}-${messageType || "price"}`
 
           },
 
