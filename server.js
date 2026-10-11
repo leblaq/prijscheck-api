@@ -83,6 +83,8 @@ app.post("/api/send-sms", async (req, res) => {
   messageType
 } = req.body;
 
+     const isReceipt =
+  messageType === "receipt";
 
     /* =========================
        BASISCONTROLE
@@ -204,35 +206,39 @@ app.post("/api/send-sms", async (req, res) => {
        SMS STATUS -> PROCESSING
     ========================= */
 
-    await fetch(
-      airtableRecordUrl,
-      {
-        method: "PATCH",
+    if (!isReceipt) {
 
-        headers: {
+  await fetch(
+    airtableRecordUrl,
+    {
+      method: "PATCH",
 
-          "Authorization":
-            `Bearer ${airtableToken}`,
+      headers: {
 
-          "Content-Type":
-            "application/json"
+        "Authorization":
+          `Bearer ${airtableToken}`,
 
-        },
+        "Content-Type":
+          "application/json"
 
-        body:
-          JSON.stringify({
+      },
 
-            fields: {
-              "SMS Status":
-                "Processing"
-            },
+      body:
+        JSON.stringify({
 
-            typecast:
-              true
+          fields: {
+            "SMS Status":
+              "Processing"
+          },
 
-          })
-      }
-    );
+          typecast:
+            true
+
+        })
+    }
+  );
+
+}
 
 
     /* =========================
@@ -333,69 +339,13 @@ app.post("/api/send-sms", async (req, res) => {
 
     if (!birdResponse.ok) {
 
-      console.error(
-        "Bird SMS fout:",
-        birdResult
-      );
+  console.error(
+    "Bird SMS fout:",
+    birdResult
+  );
 
 
-      await fetch(
-        airtableRecordUrl,
-        {
-          method: "PATCH",
-
-          headers: {
-
-            "Authorization":
-              `Bearer ${airtableToken}`,
-
-            "Content-Type":
-              "application/json"
-
-          },
-
-          body:
-            JSON.stringify({
-
-              fields: {
-                "SMS Status":
-                  "Failed"
-              },
-
-              typecast:
-                true
-
-            })
-        }
-      );
-
-
-      return res
-        .status(birdResponse.status)
-        .json({
-
-          ok: false,
-
-          error:
-            birdResult?.error?.message ||
-            birdResult?.message ||
-            "SMS kon niet worden verstuurd",
-
-          bird:
-            birdResult
-
-        });
-
-    }
-
-
-    /* =========================
-       SMS GEACCEPTEERD
-    ========================= */
-
-    const smsMessageId =
-      birdResult.id || "";
-
+  if (!isReceipt) {
 
     await fetch(
       airtableRecordUrl,
@@ -416,16 +366,8 @@ app.post("/api/send-sms", async (req, res) => {
           JSON.stringify({
 
             fields: {
-
               "SMS Status":
-                "Sent",
-
-              "SMS Message ID":
-                smsMessageId,
-
-              "SMS Sent At":
-                new Date().toISOString()
-
+                "Failed"
             },
 
             typecast:
@@ -434,6 +376,78 @@ app.post("/api/send-sms", async (req, res) => {
           })
       }
     );
+
+  }
+
+
+  return res
+    .status(birdResponse.status)
+    .json({
+
+      ok: false,
+
+      error:
+        birdResult?.error?.message ||
+        birdResult?.message ||
+        "SMS kon niet worden verstuurd",
+
+      bird:
+        birdResult
+
+    });
+
+}
+
+
+    /* =========================
+       SMS GEACCEPTEERD
+    ========================= */
+
+    const smsMessageId =
+      birdResult.id || "";
+
+
+    if (!isReceipt) {
+
+  await fetch(
+    airtableRecordUrl,
+    {
+      method: "PATCH",
+
+      headers: {
+
+        "Authorization":
+          `Bearer ${airtableToken}`,
+
+        "Content-Type":
+          "application/json"
+
+      },
+
+      body:
+        JSON.stringify({
+
+          fields: {
+
+            "SMS Status":
+              "Sent",
+
+            "SMS Message ID":
+              smsMessageId,
+
+            "SMS Sent At":
+              new Date().toISOString()
+
+          },
+
+          typecast:
+            true
+
+        })
+    }
+  );
+
+}
 
 
     console.log(
