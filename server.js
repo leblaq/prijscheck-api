@@ -1156,6 +1156,560 @@ app.get(
   }
 );
 
+/* =========================================
+   AFSPRAAK AANVRAGEN
+   POST /api/afspraak-aanvragen
+========================================= */
+
+app.post(
+  "/api/afspraak-aanvragen",
+  async (req, res) => {
+
+    try {
+
+      const {
+        referentie,
+        telefoon,
+        email,
+        locatie,
+        postcode,
+        datum,
+        tijd
+      } = req.body;
+
+
+      /* =========================
+         BASISVALIDATIE
+      ========================= */
+
+      const reference =
+        String(referentie || "")
+          .trim()
+          .toUpperCase();
+
+      const phone =
+        String(telefoon || "")
+          .trim();
+
+      const mail =
+        String(email || "")
+          .trim();
+
+      const location =
+        String(locatie || "")
+          .trim();
+
+      const postalCode =
+        String(postcode || "")
+          .trim();
+
+      const date =
+        String(datum || "")
+          .trim();
+
+      const time =
+        String(tijd || "")
+          .trim();
+
+
+      if (
+        !/^(NL|BE)[0-9]+$/.test(reference)
+      ) {
+
+        return res.status(400).json({
+          ok: false,
+          error:
+            "Ongeldige referentie"
+        });
+
+      }
+
+
+      if (!phone) {
+
+        return res.status(400).json({
+          ok: false,
+          error:
+            "Telefoonnummer ontbreekt"
+        });
+
+      }
+
+
+      if (!date || !time) {
+
+        return res.status(400).json({
+          ok: false,
+          error:
+            "Datum of tijd ontbreekt"
+        });
+
+      }
+
+
+      /* =========================
+         TIJD CONTROLEREN
+      ========================= */
+
+      const allowedTimes = [
+        "09:00",
+        "10:00",
+        "11:00",
+        "12:00",
+        "13:00",
+        "14:00",
+        "15:00",
+        "16:00",
+        "17:00"
+      ];
+
+
+      if (!allowedTimes.includes(time)) {
+
+        return res.status(400).json({
+          ok: false,
+          error:
+            "Ongeldige tijd"
+        });
+
+      }
+
+
+      /* =========================
+         LOCATIE CONTROLEREN
+      ========================= */
+
+      const nlLocations = [
+        "Amsterdam",
+        "Rotterdam",
+        "Utrecht",
+        "Oirschot"
+      ];
+
+
+      const beLocations = [
+        "Mobiele service",
+        "Locatie Boomsesteenweg, Antwerpen",
+        ...nlLocations
+      ];
+
+
+      const allowedLocations =
+        reference.startsWith("BE")
+          ? beLocations
+          : nlLocations;
+
+
+      if (
+        !allowedLocations.includes(location)
+      ) {
+
+        return res.status(400).json({
+          ok: false,
+          error:
+            "Ongeldige locatie"
+        });
+
+      }
+
+
+      if (
+        location === "Mobiele service" &&
+        !postalCode
+      ) {
+
+        return res.status(400).json({
+          ok: false,
+          error:
+            "Postcode is verplicht bij mobiele service"
+        });
+
+      }
+
+
+      /* =========================
+         AMSTERDAM TIJD
+         OMZETTEN NAAR UTC
+      ========================= */
+
+      function amsterdamToUtcIso(
+        dateString,
+        timeString
+      ) {
+
+        const [
+          year,
+          month,
+          day
+        ] =
+          dateString
+            .split("-")
+            .map(Number);
+
+        const [
+          hour,
+          minute
+        ] =
+          timeString
+            .split(":")
+            .map(Number);
+
+
+        const wantedUtc =
+          Date.UTC(
+            year,
+            month - 1,
+            day,
+            hour,
+            minute,
+            0
+          );
+
+
+        const formatter =
+          new Intl.DateTimeFormat(
+            "en-CA",
+            {
+              timeZone:
+                "Europe/Amsterdam",
+
+              year:
+                "numeric",
+
+              month:
+                "2-digit",
+
+              day:
+                "2-digit",
+
+              hour:
+                "2-digit",
+
+              minute:
+                "2-digit",
+
+              second:
+                "2-digit",
+
+              hour12:
+                false
+            }
+          );
+
+
+        function getParts(ms) {
+
+          const parts =
+            formatter.formatToParts(
+              new Date(ms)
+            );
+
+          const result = {};
+
+          for (const part of parts) {
+
+            if (
+              part.type !==
+              "literal"
+            ) {
+
+              result[part.type] =
+                Number(part.value);
+
+            }
+
+          }
+
+          return result;
+
+        }
+
+
+        const first =
+          getParts(wantedUtc);
+
+
+        const firstAsUtc =
+          Date.UTC(
+            first.year,
+            first.month - 1,
+            first.day,
+            first.hour,
+            first.minute,
+            first.second
+          );
+
+
+        const firstOffset =
+          firstAsUtc -
+          wantedUtc;
+
+
+        let corrected =
+          wantedUtc -
+          firstOffset;
+
+
+        const second =
+          getParts(corrected);
+
+
+        const secondAsUtc =
+          Date.UTC(
+            second.year,
+            second.month - 1,
+            second.day,
+            second.hour,
+            second.minute,
+            second.second
+          );
+
+
+        const secondOffset =
+          secondAsUtc -
+          corrected;
+
+
+        corrected =
+          wantedUtc -
+          secondOffset;
+
+
+        return new Date(
+          corrected
+        ).toISOString();
+
+      }
+
+
+      let appointmentIso;
+
+
+      try {
+
+        appointmentIso =
+          amsterdamToUtcIso(
+            date,
+            time
+          );
+
+      } catch (error) {
+
+        return res.status(400).json({
+          ok: false,
+          error:
+            "Ongeldige datum"
+        });
+
+      }
+
+
+      /* =========================
+         MINIMAAL 48 UUR
+      ========================= */
+
+      const appointmentDate =
+        new Date(
+          appointmentIso
+        );
+
+
+      const minimumDate =
+        new Date(
+          Date.now() +
+          (48 * 60 * 60 * 1000)
+        );
+
+
+      if (
+        Number.isNaN(
+          appointmentDate.getTime()
+        ) ||
+        appointmentDate < minimumDate
+      ) {
+
+        return res.status(400).json({
+          ok: false,
+          error:
+            "De afspraak moet minimaal 48 uur vooruit liggen"
+        });
+
+      }
+
+
+      /* =========================
+         AIRTABLE CONFIG
+      ========================= */
+
+      const airtableToken =
+        process.env.AIRTABLE_TOKEN;
+
+      const airtableBaseId =
+        process.env.AIRTABLE_BASE_ID;
+
+
+      if (
+        !airtableToken ||
+        !airtableBaseId
+      ) {
+
+        console.error(
+          "Airtable configuratie ontbreekt"
+        );
+
+        return res.status(500).json({
+          ok: false,
+          error:
+            "Airtable configuratiefout"
+        });
+
+      }
+
+
+      /* =========================
+         AIRTABLE VELDEN
+      ========================= */
+
+      const fields = {
+
+        "Referentienummer":
+          reference,
+
+        "Bevestig uw telefoonnummer":
+          phone,
+
+        "Locatie":
+          location,
+
+        "Datum afspraak":
+          appointmentIso
+
+      };
+
+
+      if (mail) {
+
+        fields["Email"] =
+          mail;
+
+      }
+
+
+      if (
+        location ===
+        "Mobiele service"
+      ) {
+
+        fields["Vul uw postcode in"] =
+          postalCode;
+
+      }
+
+
+      /* =========================
+         RECORD AANMAKEN
+      ========================= */
+
+      const airtableUrl =
+        `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent("Afspraakdata")}`;
+
+
+      const airtableResponse =
+        await fetch(
+          airtableUrl,
+          {
+            method: "POST",
+
+            headers: {
+
+              "Authorization":
+                `Bearer ${airtableToken}`,
+
+              "Content-Type":
+                "application/json"
+
+            },
+
+            body:
+              JSON.stringify({
+
+                fields,
+
+                typecast:
+                  true
+
+              })
+          }
+        );
+
+
+      const airtableResult =
+        await airtableResponse.json();
+
+
+      if (!airtableResponse.ok) {
+
+        console.error(
+          "Airtable afspraak fout:",
+          airtableResult
+        );
+
+        return res.status(500).json({
+
+          ok: false,
+
+          error:
+            airtableResult?.error?.message ||
+            "Afspraak kon niet worden opgeslagen"
+
+        });
+
+      }
+
+
+      /* =========================
+         GELUKT
+      ========================= */
+
+      console.log(
+        "Afspraakaanvraag aangemaakt:",
+        reference,
+        airtableResult.id
+      );
+
+
+      return res.json({
+
+        ok: true,
+
+        message:
+          "Afspraakaanvraag ontvangen",
+
+        recordId:
+          airtableResult.id
+
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "Afspraak aanvragen fout:",
+        error
+      );
+
+      return res.status(500).json({
+        ok: false,
+        error:
+          "Interne serverfout"
+      });
+
+    }
+
+  }
+);
+
+
 app.listen(
   PORT,
   () => {
