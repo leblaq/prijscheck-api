@@ -1572,7 +1572,7 @@ app.post(
 
       const fields = {
 
-        "Referentienummer":
+        "Referentie":
           reference,
 
         "Bevestig uw telefoonnummer":
