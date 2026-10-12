@@ -973,6 +973,189 @@ app.post("/api/prijscheck", async (req, res) => {
    START SERVER
 ========================= */
 
+/* =========================================
+   AFSPRAAK - KLANTGEGEVENS OPHALEN
+   Voorbeeld:
+   GET /api/afspraak/NL30338
+========================================= */
+
+app.get(
+  "/api/afspraak/:referentie",
+  async (req, res) => {
+
+    try {
+
+      const referentie =
+        String(
+          req.params.referentie || ""
+        )
+          .trim()
+          .toUpperCase();
+
+
+      /* =========================
+         REFERENTIE CONTROLEREN
+      ========================= */
+
+      if (
+        !/^(NL|BE)[0-9]+$/.test(
+          referentie
+        )
+      ) {
+
+        return res.status(400).json({
+          ok: false,
+          error:
+            "Ongeldige referentie"
+        });
+
+      }
+
+
+      /* =========================
+         AIRTABLE CONFIG
+      ========================= */
+
+      const airtableToken =
+        process.env.AIRTABLE_TOKEN;
+
+      const airtableBaseId =
+        process.env.AIRTABLE_BASE_ID;
+
+      const airtableTableId =
+        process.env.AIRTABLE_TABLE_ID;
+
+
+      if (
+        !airtableToken ||
+        !airtableBaseId ||
+        !airtableTableId
+      ) {
+
+        console.error(
+          "Airtable configuratie ontbreekt"
+        );
+
+        return res.status(500).json({
+          ok: false,
+          error:
+            "Airtable configuratiefout"
+        });
+
+      }
+
+
+      /* =========================
+         RECORD ZOEKEN
+      ========================= */
+
+      const formula =
+        `{Referentienummer}="${referentie}"`;
+
+
+      const airtableUrl =
+        `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}` +
+        `?maxRecords=1` +
+        `&filterByFormula=${encodeURIComponent(formula)}`;
+
+
+      const airtableResponse =
+        await fetch(
+          airtableUrl,
+          {
+            method: "GET",
+
+            headers: {
+
+              "Authorization":
+                `Bearer ${airtableToken}`
+
+            }
+          }
+        );
+
+
+      const airtableResult =
+        await airtableResponse.json();
+
+
+      if (!airtableResponse.ok) {
+
+        console.error(
+          "Airtable afspraak lookup fout:",
+          airtableResult
+        );
+
+        return res.status(500).json({
+          ok: false,
+          error:
+            "Klantgegevens konden niet worden opgehaald"
+        });
+
+      }
+
+
+      /* =========================
+         NIET GEVONDEN
+      ========================= */
+
+      if (
+        !airtableResult.records ||
+        airtableResult.records.length === 0
+      ) {
+
+        return res.status(404).json({
+          ok: false,
+          error:
+            "Referentie niet gevonden"
+        });
+
+      }
+
+
+      /* =========================
+         GEGEVENS TERUGGEVEN
+      ========================= */
+
+      const record =
+        airtableResult.records[0];
+
+      const fields =
+        record.fields || {};
+
+
+      return res.json({
+
+        ok: true,
+
+        referentie,
+
+        telefoon:
+          fields["Phonenumber"] || "",
+
+        email:
+          fields["Email"] || ""
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "Afspraak lookup fout:",
+        error
+      );
+
+      return res.status(500).json({
+        ok: false,
+        error:
+          "Interne serverfout"
+      });
+
+    }
+
+  }
+);
+
 app.listen(
   PORT,
   () => {
