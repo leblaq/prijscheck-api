@@ -4,7 +4,7 @@ import cors from "cors";
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 const PORT = process.env.PORT || 3000;
 
@@ -509,6 +509,183 @@ app.post("/api/send-sms", async (req, res) => {
 
 });
 
+/* =========================
+   VIN SCAN
+========================= */
+
+app.post("/api/vin-scan", async (req, res) => {
+
+  try {
+
+    const {
+      image
+    } = req.body;
+
+
+    if (!image) {
+
+      return res.status(400).json({
+        ok: false,
+        error: "Afbeelding ontbreekt"
+      });
+
+    }
+
+
+    const openaiApiKey =
+      process.env.OPENAI_API_KEY;
+
+
+    if (!openaiApiKey) {
+
+      console.error(
+        "OPENAI_API_KEY ontbreekt"
+      );
+
+      return res.status(500).json({
+        ok: false,
+        error: "Server configuratiefout"
+      });
+
+    }
+
+
+    const openaiResponse =
+      await fetch(
+        "https://api.openai.com/v1/responses",
+        {
+          method: "POST",
+
+          headers: {
+            "Authorization":
+              `Bearer ${openaiApiKey}`,
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+
+              model:
+                "gpt-5.4-mini",
+
+              input: [
+                {
+                  role:
+                    "user",
+
+                  content: [
+                    {
+                      type:
+                        "input_text",
+
+                      text:
+                        `Read the vehicle VIN from this image.
+
+Return ONLY the VIN.
+
+Rules:
+- VIN must contain exactly 17 characters.
+- Use uppercase letters and numbers only.
+- VIN characters I, O and Q are not valid.
+- Do not guess missing characters.
+- If a complete valid VIN cannot be read with confidence, return exactly: NOT_FOUND`
+                    },
+
+                    {
+                      type:
+                        "input_image",
+
+                      image_url:
+                        image,
+
+                      detail:
+                        "high"
+                    }
+                  ]
+                }
+              ],
+
+              max_output_tokens:
+                50
+            })
+
+        }
+      );
+
+
+    const openaiData =
+      await openaiResponse.json();
+
+
+    if (!openaiResponse.ok) {
+
+      console.error(
+        "OpenAI VIN fout:",
+        openaiData
+      );
+
+      return res.status(502).json({
+        ok: false,
+        error: "VIN kon niet worden uitgelezen"
+      });
+
+    }
+
+
+    const rawVin =
+      String(
+        openaiData.output_text || ""
+      )
+        .trim()
+        .toUpperCase()
+        .replace(
+          /[^A-Z0-9]/g,
+          ""
+        );
+
+
+    const vinRegex =
+      /^[A-HJ-NPR-Z0-9]{17}$/;
+
+
+    if (
+      rawVin === "NOTFOUND" ||
+      !vinRegex.test(rawVin)
+    ) {
+
+      return res.json({
+        ok: false,
+        found: false
+      });
+
+    }
+
+
+    return res.json({
+      ok: true,
+      found: true,
+      vin: rawVin
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      "VIN scan fout:",
+      error
+    );
+
+
+    return res.status(500).json({
+      ok: false,
+      error: "Interne serverfout"
+    });
+
+  }
+
+});
 
 /* =========================
    PRIJS CHECK
