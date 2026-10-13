@@ -720,19 +720,19 @@ app.post("/api/prijscheck", async (req, res) => {
 
   try {
 
-    const {
-      kenteken,
-      buitenlands,
-      soortschade,
-      prijs_via,
-      telefoon,
-      email,
-      merk,
-      model,
-      bouwjaar,
-      captchaToken
-    } = req.body;
-
+const {
+  kenteken,
+  buitenlands,
+  soortschade,
+  prijs_via,
+  telefoon,
+  email,
+  merk,
+  model,
+  bouwjaar,
+  vin,
+  captchaToken
+} = req.body;
 
     /* =========================
        BASISCONTROLE
@@ -1009,6 +1009,15 @@ app.post("/api/prijscheck", async (req, res) => {
         prijs_via
 
     };
+
+if (vin) {
+
+  fields["VIN"] =
+    String(vin)
+      .trim()
+      .toUpperCase();
+
+}
 
 
     if (telefoon) {
