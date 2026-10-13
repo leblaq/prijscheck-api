@@ -634,17 +634,42 @@ Rules:
     }
 
 
-    const rawVin =
-      String(
-        openaiData.output_text || ""
-      )
-        .trim()
-        .toUpperCase()
-        .replace(
-          /[^A-Z0-9]/g,
-          ""
-        );
+const outputText =
+  (
+    openaiData.output || []
+  )
+    .flatMap(
+      item =>
+        item.content || []
+    )
+    .filter(
+      part =>
+        part.type === "output_text"
+    )
+    .map(
+      part =>
+        part.text || ""
+    )
+    .join(" ")
+    .trim();
 
+
+console.log(
+  "OpenAI VIN antwoord:",
+  outputText
+);
+
+
+const rawVin =
+  String(
+    outputText
+  )
+    .trim()
+    .toUpperCase()
+    .replace(
+      /[^A-Z0-9]/g,
+      ""
+    );
 
     const vinRegex =
       /^[A-HJ-NPR-Z0-9]{17}$/;
