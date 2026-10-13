@@ -738,12 +738,17 @@ const {
        BASISCONTROLE
     ========================= */
 
-    if (!kenteken) {
-      return res.status(400).json({
-        ok: false,
-        error: "Kenteken ontbreekt"
-      });
-    }
+if (
+  !kenteken &&
+  !buitenlands
+) {
+
+  return res.status(400).json({
+    ok: false,
+    error: "Kenteken ontbreekt"
+  });
+
+}
 
     if (!soortschade) {
       return res.status(400).json({
