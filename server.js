@@ -731,6 +731,7 @@ const {
   model,
   bouwjaar,
   vin,
+  refbe,
   captchaToken
 } = req.body;
 
@@ -1014,6 +1015,10 @@ if (
         prijs_via
 
     };
+
+if (refbe) {
+  fields["refbe"] = refbe;
+}
 
 if (vin) {
 
