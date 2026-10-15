@@ -1931,6 +1931,276 @@ app.post(
 );
 
 
+/* =====================================
+   VIN DECODER - PARTS CATALOGS
+===================================== */
+
+app.get(
+  "/api/vin-decode",
+  async (req, res) => {
+
+    try {
+
+      const vin =
+        String(req.query.vin || "")
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "");
+
+
+      if (
+        !/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)
+      ) {
+
+        return res.status(400).json({
+          ok: false,
+          error: "Ongeldig VIN"
+        });
+
+      }
+
+
+      const apiKey =
+        process.env.PARTS_CATALOGS_API_KEY;
+
+      const userId =
+        process.env.PARTS_CATALOGS_USER_ID;
+
+
+      if (
+        !apiKey ||
+        !userId
+      ) {
+
+        return res.status(500).json({
+          ok: false,
+          error: "VIN decoder niet geconfigureerd"
+        });
+
+      }
+
+
+      const url =
+        "https://www.parts-catalogs.com/api/demo/car/info?q=" +
+        encodeURIComponent(vin);
+
+
+      const response =
+        await fetch(
+          url,
+          {
+            method: "GET",
+
+            headers: {
+              "Accept":
+                "application/json, text/plain, */*",
+
+              "X-Api-Key":
+                apiKey,
+
+              "X-Gui-Version":
+                "3",
+
+              "X-User-Id":
+                userId
+            }
+          }
+        );
+
+
+      if (!response.ok) {
+
+        console.error(
+          "Parts Catalogs HTTP fout:",
+          response.status
+        );
+
+        return res.status(502).json({
+          ok: false,
+          error: "Voertuiglookup mislukt"
+        });
+
+      }
+
+
+      const data =
+        await response.json();
+
+
+      const kandidaten =
+        Array.isArray(data)
+          ? data
+          : [data];
+
+
+      const geldigeKandidaten =
+        kandidaten.filter(
+          item =>
+            item &&
+            item.brand &&
+            item.modelName
+        );
+
+
+      if (!geldigeKandidaten.length) {
+
+        return res.json({
+          ok: true,
+          found: false
+        });
+
+      }
+
+
+      /* =====================================
+         EUROPA BIJ VOORKEUR
+      ===================================== */
+
+      function parameterWaarde(
+        item,
+        key
+      ) {
+
+        const parameter =
+          Array.isArray(item.parameters)
+            ? item.parameters.find(
+                p => p.key === key
+              )
+            : null;
+
+        return parameter
+          ? String(parameter.value || "").trim()
+          : "";
+      }
+
+
+      let voertuig =
+        geldigeKandidaten.find(
+          item =>
+            parameterWaarde(
+              item,
+              "sales_region"
+            ).toLowerCase() ===
+            "europe"
+        );
+
+
+      if (!voertuig) {
+
+        voertuig =
+          geldigeKandidaten[0];
+
+      }
+
+
+      /* =====================================
+         PRODUCTIEPERIODE
+
+         Bijvoorbeeld:
+         2002/05 - 2005/11
+
+         Wordt:
+         2002/05 -
+      ===================================== */
+
+      const productionPeriod =
+        parameterWaarde(
+          voertuig,
+          "prod_period"
+        );
+
+
+      let year = "";
+
+
+      const productionMatch =
+        productionPeriod.match(
+          /(\d{4})[\/\-](\d{2})/
+        );
+
+
+      if (productionMatch) {
+
+        year =
+          productionMatch[1] +
+          "/" +
+          productionMatch[2] +
+          " -";
+
+      }
+
+
+      /* =====================================
+         FALLBACK NAAR YEAR
+      ===================================== */
+
+      if (!year) {
+
+        const echteYear =
+          parameterWaarde(
+            voertuig,
+            "year"
+          );
+
+
+        if (
+          echteYear &&
+          !echteYear.includes("*")
+        ) {
+
+          year =
+            echteYear;
+
+        }
+
+      }
+
+
+      return res.json({
+
+        ok: true,
+
+        found: true,
+
+        vin: vin,
+
+        make:
+          String(
+            voertuig.brand
+          ).trim(),
+
+        model:
+          String(
+            voertuig.modelName
+          ).trim(),
+
+        year:
+          year,
+
+        productionPeriod:
+          productionPeriod
+
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "VIN decode fout:",
+        error
+      );
+
+
+      return res.status(500).json({
+        ok: false,
+        error: "VIN decoder fout"
+      });
+
+    }
+
+  }
+);
+
 app.listen(
   PORT,
   () => {
