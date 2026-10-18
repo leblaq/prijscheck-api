@@ -289,8 +289,8 @@ if (!isIndicatie) {
 "Idempotency-Key":
   isIndicatie
     ? `airtable-${recordId}-indicatie`
-    : `airtable-${recordId}-${messageType || "price"}`
-          },
+    : `airtable-${recordId}-price`
+     },
 
           body:
             JSON.stringify({
