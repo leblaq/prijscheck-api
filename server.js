@@ -1391,16 +1391,14 @@ app.post(
 
     try {
 
-      const {
-        referentie,
-        telefoon,
-        email,
-        locatie,
-        postcode,
-        datum,
-        tijd
-      } = req.body;
-
+const {
+  recordId,
+  telefoon,
+  country,
+  message,
+  messageType,
+  smsType
+} = req.body;
 
       /* =========================
          BASISVALIDATIE
