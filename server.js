@@ -80,6 +80,7 @@ const {
   telefoon,
   country,
   message,
+  messageType,
   smsType
 } = req.body;
 
