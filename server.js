@@ -2201,6 +2201,164 @@ app.get(
   }
 );
 
+/*
+|--------------------------------------------------------------------------
+| VIN AANVULLEN VIA CARDOME.BE
+|--------------------------------------------------------------------------
+|
+| cardome.be/vin
+| -> Railway
+| -> Airtable webhook
+|
+*/
+
+app.post(
+  "/api/submit-vin",
+  async (req, res) => {
+
+    const vin =
+      String(
+        req.body.vin || ""
+      )
+        .trim()
+        .toUpperCase()
+        .replace(
+          /[^A-Z0-9]/g,
+          ""
+        );
+
+
+    const referenceNumber =
+      String(
+        req.body.referenceNumber || ""
+      )
+        .trim()
+        .toUpperCase();
+
+
+    console.log(
+      "VIN aanvulling ontvangen:",
+      {
+        vin,
+        referenceNumber
+      }
+    );
+
+
+    if (!referenceNumber) {
+
+      return res.status(400).json({
+        success: false,
+        error:
+          "Geen referentienummer ontvangen"
+      });
+
+    }
+
+
+    if (
+      !/^[A-HJ-NPR-Z0-9]{17}$/
+        .test(vin)
+    ) {
+
+      return res.status(400).json({
+        success: false,
+        error:
+          "Ongeldig VIN-nummer"
+      });
+
+    }
+
+
+    const webhookUrl =
+      process.env
+        .VIN_AIRTABLE_WEBHOOK_URL;
+
+
+    if (!webhookUrl) {
+
+      console.error(
+        "VIN_AIRTABLE_WEBHOOK_URL ontbreekt"
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "VIN webhook is niet ingesteld"
+      });
+
+    }
+
+
+    try {
+
+      const response =
+        await fetch(
+          webhookUrl,
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify({
+                vin,
+                referenceNumber
+              })
+          }
+        );
+
+
+      const text =
+        await response.text();
+
+
+      console.log(
+        "VIN Airtable webhook response:",
+        response.status,
+        text
+      );
+
+
+      if (!response.ok) {
+
+        throw new Error(
+          `Airtable webhook fout ${response.status}: ${text}`
+        );
+
+      }
+
+
+      return res.json({
+        success: true,
+        vin,
+        referenceNumber
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "VIN opslaan fout:",
+        error.message
+      );
+
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "VIN kon niet worden opgeslagen"
+      });
+
+    }
+
+  }
+);
+
 app.listen(
   PORT,
   () => {
