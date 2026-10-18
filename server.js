@@ -75,14 +75,18 @@ app.post("/api/send-sms", async (req, res) => {
 
   try {
 
-    const {
+const {
   recordId,
   telefoon,
   country,
   message,
-  messageType
+  smsType
 } = req.body;
 
+const isIndicatie =
+  String(smsType || "")
+    .trim()
+    .toLowerCase() === "indicatie";
      const isReceipt =
   messageType === "receipt";
 
@@ -208,6 +212,8 @@ app.post("/api/send-sms", async (req, res) => {
 
     if (!isReceipt) {
 
+if (!isIndicatie) {
+
   await fetch(
     airtableRecordUrl,
     {
@@ -238,6 +244,7 @@ app.post("/api/send-sms", async (req, res) => {
     }
   );
 
+}
 }
 
 
@@ -279,9 +286,10 @@ app.post("/api/send-sms", async (req, res) => {
             "Content-Type":
               "application/json",
 
-            "Idempotency-Key":
-  `airtable-${recordId}-${messageType || "price"}`
-
+"Idempotency-Key":
+  isIndicatie
+    ? `airtable-${recordId}-indicatie`
+    : `airtable-${recordId}-${messageType || "price"}`
           },
 
           body:
@@ -347,36 +355,35 @@ app.post("/api/send-sms", async (req, res) => {
 
   if (!isReceipt) {
 
-    await fetch(
-      airtableRecordUrl,
-      {
-        method: "PATCH",
+if (!isIndicatie) {
 
-        headers: {
+  await fetch(
+    airtableRecordUrl,
+    {
+      method: "PATCH",
 
-          "Authorization":
-            `Bearer ${airtableToken}`,
+      headers: {
+        "Authorization":
+          `Bearer ${airtableToken}`,
 
-          "Content-Type":
-            "application/json"
+        "Content-Type":
+          "application/json"
+      },
 
-        },
+      body:
+        JSON.stringify({
+          fields: {
+            "SMS Status":
+              "Failed"
+          },
 
-        body:
-          JSON.stringify({
+          typecast:
+            true
+        })
+    }
+  );
 
-            fields: {
-              "SMS Status":
-                "Failed"
-            },
-
-            typecast:
-              true
-
-          })
-      }
-    );
-
+}
   }
 
 
@@ -407,7 +414,7 @@ app.post("/api/send-sms", async (req, res) => {
       birdResult.id || "";
 
 
-    if (!isReceipt) {
+if (!isReceipt && !isIndicatie) {
 
   await fetch(
     airtableRecordUrl,
@@ -415,18 +422,15 @@ app.post("/api/send-sms", async (req, res) => {
       method: "PATCH",
 
       headers: {
-
         "Authorization":
           `Bearer ${airtableToken}`,
 
         "Content-Type":
           "application/json"
-
       },
 
       body:
         JSON.stringify({
-
           fields: {
 
             "SMS Status":
@@ -442,7 +446,6 @@ app.post("/api/send-sms", async (req, res) => {
 
           typecast:
             true
-
         })
     }
   );
