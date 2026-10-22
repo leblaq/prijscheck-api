@@ -1614,7 +1614,7 @@ app.post('/api/afspraak-aanvragen', async (req, res) => {
     if (!isExisting) {
       fields['Kenteken'] = plate;
       // Multiselect: 1 geselecteerde waarde, als Airtable-array.
-      fields['Soort schade'] = [damage];
+      fields['Soort schade'] = damage;
     }
     if (location === 'Mobiele service') fields['Vul uw postcode in'] = postalCode;
 
