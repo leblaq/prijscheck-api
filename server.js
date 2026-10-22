@@ -1381,180 +1381,55 @@ app.get(
   }
 );
 
-/* =========================================
-   AFSPRAAK AANVRAGEN
-   POST /api/afspraak-aanvragen
-========================================= */
+/* =====================================================
+   CARDOME AFSPRAAK AANVRAGEN (BE / NL, nieuw en bestaand)
+   Vervang ALLEEN de oude POST /api/afspraak-aanvragen route.
+   De overige endpoints blijven ongewijzigd.
+===================================================== */
+app.post('/api/afspraak-aanvragen', async (req, res) => {
+  try {
+    const data = req.body || {};
+    const trim = value => String(value ?? '').trim();
+    const reference = trim(data.referentie).toUpperCase();
+    const country = (reference ? reference.slice(0, 2) : trim(data.land)).toUpperCase();
+    const plate = trim(data.kenteken).toUpperCase();
+    const damage = trim(data.soortschade);
+    const phone = trim(data.telefoon);
+    const mail = trim(data.email);
+    const location = trim(data.locatie);
+    const postalCode = trim(data.postcode);
+    const date = trim(data.datum);
+    const time = trim(data.tijd);
+    const isExisting = Boolean(reference);
 
-app.post(
-  "/api/afspraak-aanvragen",
-  async (req, res) => {
+    const fail = (error) => res.status(400).json({ok:false,error});
+    if (data.heeftReferentie === true && !isExisting) return fail('Referentienummer ontbreekt');
+    if (isExisting && !/^(NL|BE)[A-Z0-9-]+$/.test(reference)) return fail('Ongeldige referentie');
+    if (!['NL','BE'].includes(country)) return fail('Ongeldig land (NL of BE)');
+    if (!isExisting && !plate) return fail('Kenteken ontbreekt');
 
-    try {
+    const damageValues = [
+      'Voorruit','Achterruit','Achterruit deur rechts','Achterruit deur links',
+      'Zijruit deur links voor','Zijruit deur rechts voor',
+      'Zijruit linksvoor driehoek','Zijruit rechtsvoor driehoek',
+      'Zijruit achter links (beweegbaar)','Zijruit achter rechts (beweegbaar)',
+      'Zijruit achter links (vaste ruit)','Zijruit achter rechts (vaste ruit)'
+    ];
+    if (!isExisting && !damageValues.includes(damage)) return fail('Ongeldige of ontbrekende soort schade');
+    if (!/^\+[1-9]\d{6,14}$/.test(phone)) return fail('Ongeldig internationaal telefoonnummer');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return fail('Ongeldig of ontbrekend e-mailadres');
 
-const {
-  recordId,
-  telefoon,
-  country,
-  message,
-  messageType,
-  smsType
-} = req.body;
+    const nlLocations = ['Amsterdam','Rotterdam','Utrecht','Oirschot (Eindhoven)'];
+    const beLocations = ['Boomsesteenweg 368, 2610 Antwerpen, België','Mobiele service'];
+    const allowedLocations = country === 'NL' ? nlLocations : beLocations;
+    if (!allowedLocations.includes(location)) return fail('Ongeldige locatie voor het gekozen land');
+    if (location === 'Mobiele service' && !postalCode) return fail('Postcode is verplicht bij mobiele service');
 
-      /* =========================
-         BASISVALIDATIE
-      ========================= */
+    const allowedTimes = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00'];
+    if (!allowedTimes.includes(time)) return fail('Ongeldige tijd');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail('Ongeldige datum');
 
-      const reference =
-        String(referentie || "")
-          .trim()
-          .toUpperCase();
-
-      const phone =
-        String(telefoon || "")
-          .trim();
-
-      const mail =
-        String(email || "")
-          .trim();
-
-      const location =
-        String(locatie || "")
-          .trim();
-
-      const postalCode =
-        String(postcode || "")
-          .trim();
-
-      const date =
-        String(datum || "")
-          .trim();
-
-      const time =
-        String(tijd || "")
-          .trim();
-
-
-      if (
-        !/^(NL|BE)[0-9]+$/.test(reference)
-      ) {
-
-        return res.status(400).json({
-          ok: false,
-          error:
-            "Ongeldige referentie"
-        });
-
-      }
-
-
-      if (!phone) {
-
-        return res.status(400).json({
-          ok: false,
-          error:
-            "Telefoonnummer ontbreekt"
-        });
-
-      }
-
-
-      if (!date || !time) {
-
-        return res.status(400).json({
-          ok: false,
-          error:
-            "Datum of tijd ontbreekt"
-        });
-
-      }
-
-
-      /* =========================
-         TIJD CONTROLEREN
-      ========================= */
-
-      const allowedTimes = [
-        "09:00",
-        "10:00",
-        "11:00",
-        "12:00",
-        "13:00",
-        "14:00",
-        "15:00",
-        "16:00",
-        "17:00"
-      ];
-
-
-      if (!allowedTimes.includes(time)) {
-
-        return res.status(400).json({
-          ok: false,
-          error:
-            "Ongeldige tijd"
-        });
-
-      }
-
-
-      /* =========================
-         LOCATIE CONTROLEREN
-      ========================= */
-
-      const nlLocations = [
-        "Amsterdam",
-        "Rotterdam",
-        "Utrecht",
-        "Oirschot"
-      ];
-
-
-      const beLocations = [
-        "Mobiele service",
-        "Locatie Boomsesteenweg, Antwerpen",
-        ...nlLocations
-      ];
-
-
-      const allowedLocations =
-        reference.startsWith("BE")
-          ? beLocations
-          : nlLocations;
-
-
-      if (
-        !allowedLocations.includes(location)
-      ) {
-
-        return res.status(400).json({
-          ok: false,
-          error:
-            "Ongeldige locatie"
-        });
-
-      }
-
-
-      if (
-        location === "Mobiele service" &&
-        !postalCode
-      ) {
-
-        return res.status(400).json({
-          ok: false,
-          error:
-            "Postcode is verplicht bij mobiele service"
-        });
-
-      }
-
-
-      /* =========================
-         AMSTERDAM TIJD
-         OMZETTEN NAAR UTC
-      ========================= */
-
+    // Zelfde Europe/Amsterdam -> UTC aanpak als je oorspronkelijke server.js.
       function amsterdamToUtcIso(
         dateString,
         timeString
@@ -1704,233 +1579,63 @@ const {
 
       }
 
-
-      let appointmentIso;
-
-
-      try {
-
-        appointmentIso =
-          amsterdamToUtcIso(
-            date,
-            time
-          );
-
-      } catch (error) {
-
-        return res.status(400).json({
-          ok: false,
-          error:
-            "Ongeldige datum"
-        });
-
+    let appointmentIso;
+    try {
+      appointmentIso = amsterdamToUtcIso(date,time);
+      // Invalid calendar dates mogen niet stil naar een andere datum doorschuiven.
+      const [y,m,d] = date.split('-').map(Number);
+      const validCalendarDate = new Date(Date.UTC(y,m-1,d));
+      if (validCalendarDate.getUTCFullYear() !== y || validCalendarDate.getUTCMonth() !== m-1 || validCalendarDate.getUTCDate() !== d) {
+        return fail('Ongeldige kalenderdatum');
       }
-
-
-      /* =========================
-         MINIMAAL 48 UUR
-      ========================= */
-
-      const appointmentDate =
-        new Date(
-          appointmentIso
-        );
-
-
-      const minimumDate =
-        new Date(
-          Date.now() +
-          (48 * 60 * 60 * 1000)
-        );
-
-
-      if (
-        Number.isNaN(
-          appointmentDate.getTime()
-        ) ||
-        appointmentDate < minimumDate
-      ) {
-
-        return res.status(400).json({
-          ok: false,
-          error:
-            "De afspraak moet minimaal 48 uur vooruit liggen"
-        });
-
-      }
-
-
-      /* =========================
-         AIRTABLE CONFIG
-      ========================= */
-
-      const airtableToken =
-        process.env.AIRTABLE_TOKEN;
-
-      const airtableBaseId =
-        process.env.AIRTABLE_BASE_ID;
-
-
-      if (
-        !airtableToken ||
-        !airtableBaseId
-      ) {
-
-        console.error(
-          "Airtable configuratie ontbreekt"
-        );
-
-        return res.status(500).json({
-          ok: false,
-          error:
-            "Airtable configuratiefout"
-        });
-
-      }
-
-
-      /* =========================
-         AIRTABLE VELDEN
-      ========================= */
-
-      const fields = {
-
-        "Referentie":
-          reference,
-
-        "Bevestig uw telefoonnummer":
-          phone,
-
-        "Locatie":
-          location,
-
-        "Datum afspraak":
-          appointmentIso
-
-      };
-
-
-      if (mail) {
-
-        fields["Email"] =
-          mail;
-
-      }
-
-
-      if (
-        location ===
-        "Mobiele service"
-      ) {
-
-        fields["Vul uw postcode in"] =
-          postalCode;
-
-      }
-
-
-      /* =========================
-         RECORD AANMAKEN
-      ========================= */
-
-      const airtableUrl =
-        `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent("Afspraakdata")}`;
-
-
-      const airtableResponse =
-        await fetch(
-          airtableUrl,
-          {
-            method: "POST",
-
-            headers: {
-
-              "Authorization":
-                `Bearer ${airtableToken}`,
-
-              "Content-Type":
-                "application/json"
-
-            },
-
-            body:
-              JSON.stringify({
-
-                fields,
-
-                typecast:
-                  true
-
-              })
-          }
-        );
-
-
-      const airtableResult =
-        await airtableResponse.json();
-
-
-      if (!airtableResponse.ok) {
-
-        console.error(
-          "Airtable afspraak fout:",
-          airtableResult
-        );
-
-        return res.status(500).json({
-
-          ok: false,
-
-          error:
-            airtableResult?.error?.message ||
-            "Afspraak kon niet worden opgeslagen"
-
-        });
-
-      }
-
-
-      /* =========================
-         GELUKT
-      ========================= */
-
-      console.log(
-        "Afspraakaanvraag aangemaakt:",
-        reference,
-        airtableResult.id
-      );
-
-
-      return res.json({
-
-        ok: true,
-
-        message:
-          "Afspraakaanvraag ontvangen",
-
-        recordId:
-          airtableResult.id
-
-      });
-
-
     } catch (error) {
-
-      console.error(
-        "Afspraak aanvragen fout:",
-        error
-      );
-
-      return res.status(500).json({
-        ok: false,
-        error:
-          "Interne serverfout"
-      });
-
+      return fail('Ongeldige datum');
+    }
+    if (new Date(appointmentIso).getTime() < Date.now() + 48*60*60*1000) {
+      return fail('De afspraak moet minimaal 48 uur vooruit liggen');
     }
 
+    const airtableToken = process.env.AIRTABLE_TOKEN;
+    const airtableBaseId = process.env.AIRTABLE_BASE_ID;
+    if (!airtableToken || !airtableBaseId) {
+      console.error('Airtable configuratie ontbreekt');
+      return res.status(500).json({ok:false,error:'Airtable configuratiefout'});
+    }
+
+    // Exact de kolomnamen die zijn bevestigd voor Afspraakdata.
+    // Referentie bewust NIET meesturen voor nieuwe klanten.
+    const fields = {
+      'Bevestig uw telefoonnummer': phone,
+      'Email': mail,
+      'Locatie': location,
+      'Datum afspraak': appointmentIso
+    };
+    if (isExisting) fields['Referentie'] = reference;
+    if (!isExisting) {
+      fields['Kenteken'] = plate;
+      // Multiselect: 1 geselecteerde waarde, als Airtable-array.
+      fields['Soort schade'] = [damage];
+    }
+    if (location === 'Mobiele service') fields['Vul uw postcode in'] = postalCode;
+
+    const url = `https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent('tblRwyg9ypzEzo8Yu')}`;
+    const response = await fetch(url, {
+      method:'POST',
+      headers:{'Authorization':`Bearer ${airtableToken}`,'Content-Type':'application/json'},
+      body:JSON.stringify({fields,typecast:true})
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      console.error('Airtable afspraak fout:', result);
+      return res.status(500).json({ok:false,error:result?.error?.message || 'Afspraak kon niet worden opgeslagen'});
+    }
+    console.log('Afspraak aangemaakt:',result.id, country, isExisting ? 'bestaande klant' : 'nieuwe klant');
+    return res.status(201).json({ok:true,message:'Afspraakaanvraag ontvangen',recordId:result.id});
+  } catch (error) {
+    console.error('Afspraak aanvragen fout:', error);
+    return res.status(500).json({ok:false,error:'Interne serverfout'});
   }
-);
+});
 
 
 /* =====================================
