@@ -743,16 +743,41 @@ const {
        BASISCONTROLE
     ========================= */
 
-if (
-  !kenteken &&
-  !buitenlands
-) {
+/* =====================================================
+   PRIJS-CHECK: TWEE BESTAANDE FORMULIERTYPES
+   NL: kenteken -> RDW, buitenlands kenteken -> handmatig.
+   BE: VIN of handmatige merk/model/bouwjaar zonder kenteken.
+   Belangrijk: NL-logica hieronder NIET wijzigen.
+===================================================== */
+const normalizedPlate = String(kenteken || "").trim().toUpperCase();
+const normalizedVin = String(vin || "").trim().toUpperCase();
+const isValidVin = /^[A-HJ-NPR-Z0-9]{17}$/.test(normalizedVin);
+const hasVin = normalizedVin.length > 0;
+const manualMerk = String(merk || "").trim();
+const manualModel = String(model || "").trim();
+const manualBouwjaar = String(bouwjaar || "").trim();
+const hasManualVehicle = Boolean(manualMerk && manualModel && manualBouwjaar);
+const isVinRoute = !normalizedPlate && (hasVin || hasManualVehicle);
 
+if (!normalizedPlate && !isVinRoute) {
   return res.status(400).json({
     ok: false,
-    error: "Kenteken ontbreekt"
+    error: "Vul een kenteken of een geldig VIN in, of geef merk, model en bouwjaar op"
   });
+}
 
+if (isVinRoute && hasVin && !isValidVin) {
+  return res.status(400).json({
+    ok: false,
+    error: "VIN moet exact 17 geldige tekens bevatten (zonder I, O of Q)"
+  });
+}
+
+if (isVinRoute && !isValidVin && !hasManualVehicle) {
+  return res.status(400).json({
+    ok: false,
+    error: "Vul een geldig VIN in of geef merk, model en bouwjaar op"
+  });
 }
 
     if (!soortschade) {
@@ -855,16 +880,13 @@ if (
     let finalBouwjaar = "";
 
 
-    if (buitenlands) {
+    // VIN- of handmatige route (BE), en buitenlandse kentekens (NL).
+    // Bij een Nederlands kenteken blijft de RDW-lookup hieronder exact behouden.
+    if (isVinRoute || buitenlands) {
 
-      finalMerk =
-        (merk || "").trim();
-
-      finalModel =
-        (model || "").trim();
-
-      finalBouwjaar =
-        bouwjaar || "";
+      finalMerk = manualMerk;
+      finalModel = manualModel;
+      finalBouwjaar = manualBouwjaar;
 
     }
 
@@ -1007,7 +1029,7 @@ if (
     const fields = {
 
       "License plate":
-        kenteken,
+        normalizedPlate,
 
       "Buitenlands":
         Boolean(buitenlands),
