@@ -794,82 +794,36 @@ if (isVinRoute && !isValidVin && !hasManualVehicle) {
       });
     }
 
-    if (!captchaToken) {
-      return res.status(400).json({
-        ok: false,
-        error: "reCAPTCHA ontbreekt"
-      });
+    /* Dual verification while upgrading the three form types.
+       Legacy NL/BE pages can still submit captchaToken (Google).
+       New Turnstile pages submit turnstileToken. Never bypass verification. */
+    const turnstileToken = String(req.body.turnstileToken || "").trim();
+    if (!turnstileToken && !captchaToken) {
+      return res.status(400).json({ok:false,error:"Beveiligingscontrole ontbreekt"});
     }
-
-
-    /* =========================
-       RECAPTCHA CONTROLEREN
-    ========================= */
-
-    const recaptchaSecret =
-      process.env.RECAPTCHA_SECRET_KEY;
-
-    if (!recaptchaSecret) {
-
-      console.error(
-        "RECAPTCHA_SECRET_KEY ontbreekt"
-      );
-
-      return res.status(500).json({
-        ok: false,
-        error: "Server configuratiefout"
+    if (turnstileToken) {
+      const secret = process.env.TURNSTILE_SECRET_KEY;
+      if (!secret) return res.status(500).json({ok:false,error:"Turnstile niet geconfigureerd"});
+      const params = new URLSearchParams({secret,response:turnstileToken});
+      const verify = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify",{
+        method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:params.toString()
       });
-    }
-
-
-    const captchaParams =
-      new URLSearchParams();
-
-    captchaParams.append(
-      "secret",
-      recaptchaSecret
-    );
-
-    captchaParams.append(
-      "response",
-      captchaToken
-    );
-
-
-    const captchaResponse =
-      await fetch(
-        "https://www.google.com/recaptcha/api/siteverify",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/x-www-form-urlencoded"
-          },
-
-          body:
-            captchaParams.toString()
-        }
-      );
-
-
-    const captchaResult =
-      await captchaResponse.json();
-
-
-    if (!captchaResult.success) {
-
-      console.log(
-        "reCAPTCHA afgekeurd:",
-        captchaResult
-      );
-
-      return res.status(400).json({
-        ok: false,
-        error: "reCAPTCHA controle mislukt"
+      if (!verify.ok) return res.status(502).json({ok:false,error:"Beveiligingsdienst tijdelijk onbereikbaar"});
+      const verification = await verify.json();
+      if (!verification.success) return res.status(400).json({ok:false,error:"Turnstile verificatie mislukt, probeer opnieuw"});
+      const allowedHosts = new Set(["cardome.nl","www.cardome.nl","cardome.be","www.cardome.be"]);
+      if (!allowedHosts.has(verification.hostname)) return res.status(400).json({ok:false,error:"Turnstile domeincontrole mislukt"});
+    } else {
+      const secret = process.env.RECAPTCHA_SECRET_KEY;
+      if (!secret) return res.status(500).json({ok:false,error:"reCAPTCHA niet geconfigureerd"});
+      const params = new URLSearchParams({secret,response:String(captchaToken)});
+      const verify = await fetch("https://www.google.com/recaptcha/api/siteverify",{
+        method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:params.toString()
       });
+      if (!verify.ok) return res.status(502).json({ok:false,error:"Beveiligingsdienst tijdelijk onbereikbaar"});
+      const verification = await verify.json();
+      if (!verification.success) return res.status(400).json({ok:false,error:"reCAPTCHA controle mislukt"});
     }
-
 
     /* =========================
        VOERTUIGGEGEVENS
