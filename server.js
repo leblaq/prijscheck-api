@@ -1358,6 +1358,38 @@ app.get(
 );
 
 /* =====================================================
+   AFSPRAKEN: NATIONALE TELEFOONNUMMERS OMZETTEN NAAR E.164
+   Alleen gebruikt door /api/afspraak-aanvragen.
+   De bestaande SMS- en prijscheck-nummerverwerking blijft intact.
+===================================================== */
+function normalizeAppointmentPhone(value, country) {
+  const input = String(value ?? "").trim();
+  if (!input) return null;
+
+  // Sta alleen gewone opmaaktekens toe; geen extensies of letters.
+  if (!/^[+\d\s().-]+$/.test(input)) return null;
+  let digits = input.replace(/\D/g, "");
+  let normalized;
+
+  if (input.startsWith("+")) {
+    normalized = "+" + digits;
+  } else if (digits.startsWith("00")) {
+    normalized = "+" + digits.slice(2);
+  } else if (digits.startsWith("0")) {
+    const dialCode = country === "NL" ? "31" : country === "BE" ? "32" : null;
+    if (!dialCode) return null;
+    normalized = "+" + dialCode + digits.slice(1);
+  } else if (digits.startsWith("31") || digits.startsWith("32")) {
+    // Ook volledig internationaal ingevulde nummers zonder '+' accepteren.
+    normalized = "+" + digits;
+  } else {
+    return null;
+  }
+
+  return /^\+[1-9]\d{6,14}$/.test(normalized) ? normalized : null;
+}
+
+/* =====================================================
    CARDOME AFSPRAAK AANVRAGEN (BE / NL, nieuw en bestaand)
    Vervang ALLEEN de oude POST /api/afspraak-aanvragen route.
    De overige endpoints blijven ongewijzigd.
@@ -1370,7 +1402,7 @@ app.post('/api/afspraak-aanvragen', async (req, res) => {
     const country = (reference ? reference.slice(0, 2) : trim(data.land)).toUpperCase();
     const plate = trim(data.kenteken).toUpperCase();
     const damage = trim(data.soortschade);
-    const phone = trim(data.telefoon);
+    const phone = normalizeAppointmentPhone(data.telefoon, country);
     const mail = trim(data.email);
     const location = trim(data.locatie);
     const postalCode = trim(data.postcode);
@@ -1392,7 +1424,7 @@ app.post('/api/afspraak-aanvragen', async (req, res) => {
       'Zijruit achter links (vaste ruit)','Zijruit achter rechts (vaste ruit)'
     ];
     if (!isExisting && !damageValues.includes(damage)) return fail('Ongeldige of ontbrekende soort schade');
-    if (!/^\+[1-9]\d{6,14}$/.test(phone)) return fail('Ongeldig internationaal telefoonnummer');
+    if (!phone) return fail('Ongeldig telefoonnummer. Vul een geldig Nederlands, Belgisch of internationaal telefoonnummer in');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return fail('Ongeldig of ontbrekend e-mailadres');
 
     const nlLocations = ['Amsterdam','Rotterdam','Utrecht','Oirschot (Eindhoven)'];
